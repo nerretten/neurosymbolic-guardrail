@@ -1,0 +1,37 @@
+cypherStatements
+"CREATE CONSTRAINT c_asset_id FOR (node:Asset) REQUIRE (node.id) IS UNIQUE;
+CREATE CONSTRAINT c_class_id FOR (node:AssetClass) REQUIRE (node.id) IS UNIQUE;
+CREATE CONSTRAINT c_intent_id FOR (node:UserIntent) REQUIRE (node.id) IS UNIQUE;
+CREATE CONSTRAINT c_policy_id FOR (node:SecurityPolicy) REQUIRE (node.id) IS UNIQUE;
+CREATE CONSTRAINT c_verdict_id FOR (node:Verdict) REQUIRE (node.status) IS UNIQUE;
+UNWIND [{status:\"DENY\", properties:{}}, {status:\"ALLOW\", properties:{}}] AS row
+CREATE (n:Verdict{status: row.status}) SET n += row.properties;
+UNWIND [{id:\"BB_DEPOSIT_STABLE\", properties:{ticker:\"BYN_DEP_BB\", name:\"Вклад Стабильный Беларусбанк\", currency:\"BYN\"}}, {id:\"PRIOR_DEPOSIT_PREMIUM\", properties:{ticker:\"USD_DEP_PRIOR\", name:\"Вклад Премиум Приорбанк\", currency:\"USD\"}}, {id:\"MINFIN_VGDO_295\", properties:{ticker:\"VGDO295\", name:\"ВГДО 295 выпуск Минфин РБ\", currency:\"USD\"}}, {id:\"BCSE_PRIOR\", properties:{ticker:\"PRIOR\", name:\"Акции Приорбанк\", currency:\"BYN\"}}, {id:\"BCSE_MAZ\", properties:{ticker:\"MAZ\", name:\"Акции МАЗ\", currency:\"BYN\"}}, {id:\"FINSTORE_BELAZ_01\", properties:{ticker:\"BELAZ_USD\", name:\"Токены БелАЗ выпуск 1 USD\", currency:\"USD\"}}, {id:\"FINSTORE_MAZ_02\", properties:{ticker:\"MAZ_USD\", name:\"Токены МАЗ выпуск 2 USD\", currency:\"USD\"}}, {id:\"FINSTORE_EVROTORG\", properties:{ticker:\"EVROTORG_USD\", name:\"Токены Евроторг\", currency:\"USD\"}}, {id:\"CRYPTO_BTC\", properties:{ticker:\"BTC\", name:\"Bitcoin\", currency:\"USD\"}}, {id:\"CRYPTO_USDT\", properties:{ticker:\"USDT\", name:\"Tether USD\", currency:\"USD\"}}] AS row
+CREATE (n:Asset{id: row.id}) SET n += row.properties;
+UNWIND [{id:\"FINANCIAL_PRODUCT\", properties:{risk_level:\"UNDEFINED\", name:\"Финансовый инструмент / продукт\"}}, {id:\"CLASS_DEPOSIT\", properties:{risk_level:\"LOW\", name:\"Банковский вклад (депозит)\", legal_framework:\"Закон РБ № 258-З\", state_guaranteed:true}}, {id:\"CLASS_SECURITY\", properties:{risk_level:\"MEDIUM\", name:\"Эмиссионная ценная бумага\", legal_framework:\"Закон РБ № 231-З\", state_guaranteed:false}}, {id:\"CLASS_TOKEN\", properties:{risk_level:\"HIGH\", name:\"Цифровой знак (Токен)\", legal_framework:\"Декрет Президента РБ № 8\", state_guaranteed:false}}, {id:\"CLASS_GOV_DEBT\", properties:{risk_level:\"LOW\", name:\"Государственная облигация Минфина РБ\"}}, {id:\"CLASS_EQUITY\", properties:{risk_level:\"HIGH\", name:\"Акции хозяйственных обществ (БВФБ)\"}}, {id:\"CLASS_TOKENIZED_DEBT\", properties:{risk_level:\"MEDIUM_HIGH\", name:\"Токенизированные корпоративные облигации (Finstore)\"}}, {id:\"CLASS_CRYPTO\", properties:{risk_level:\"EXTREME\", name:\"Криптовалюта (необеспеченный токен)\"}}] AS row
+CREATE (n:AssetClass{id: row.id}) SET n += row.properties;
+UNWIND [{id:\"POL_RB_SECURITIES_231Z\", properties:{severity:\"BLOCK\", reason:\"Индивидуальное инвестиционное консультирование требует специального разрешения (лицензии) Минфина РБ.\", legal_reference:\"Закон РБ № 231-З «О рынке ценных бумаг», ст. 11, 14\", name:\"Запрет нелицензированных инвест-рекомендаций\"}}, {id:\"POL_RB_DEPOSIT_COMPARE\", properties:{severity:\"BLOCK\", reason:\"Запрещено сопоставлять рисковые активы и токены с банковскими вкладами, обеспеченными 100% государственной гарантией возмещения.\", legal_reference:\"Закон РБ № 258-З «О гарантированном возмещении банковских вкладов»\", name:\"Защита застрахованных банковских вкладов\"}}, {id:\"POL_RB_ADVERTISING_PROFIT\", properties:{severity:\"BLOCK\", reason:\"Законодательство запрещает гарантировать или обещать доходность по инструментам с рыночным риском.\", legal_reference:\"Закон РБ «О рекламе», ст. 13\", name:\"Запрет гарантии доходности на финрынке\"}}] AS row
+CREATE (n:SecurityPolicy{id: row.id}) SET n += row.properties;
+UNWIND [{id:\"INT_GET_ADVICE\", properties:{name:\"Запрос индивидуальной инвестиционной рекомендации\", is_regulated:true}}, {id:\"INT_COMPARE\", properties:{name:\"Сравнение надежности или доходности активов\", is_regulated:true}}, {id:\"INT_PREDICT_YIELD\", properties:{name:\"Запрос гарантии доходности или ценового прогноза\", is_regulated:true}}, {id:\"INT_EDUCATIONAL\", properties:{name:\"Справочно-образовательный запрос\", is_regulated:false}}] AS row
+CREATE (n:UserIntent{id: row.id}) SET n += row.properties;
+UNWIND [{start: {id:\"POL_RB_SECURITIES_231Z\"}, end: {status:\"DENY\"}, properties:{}}, {start: {id:\"POL_RB_DEPOSIT_COMPARE\"}, end: {status:\"DENY\"}, properties:{}}, {start: {id:\"POL_RB_ADVERTISING_PROFIT\"}, end: {status:\"DENY\"}, properties:{}}] AS row
+MATCH (start:SecurityPolicy{id: row.start.id})
+MATCH (end:Verdict{status: row.end.status})
+CREATE (start)-[r:RESULTS_IN]->(end) SET r += row.properties;
+UNWIND [{start: {id:\"CLASS_DEPOSIT\"}, end: {id:\"FINANCIAL_PRODUCT\"}, properties:{}}, {start: {id:\"CLASS_SECURITY\"}, end: {id:\"FINANCIAL_PRODUCT\"}, properties:{}}, {start: {id:\"CLASS_TOKEN\"}, end: {id:\"FINANCIAL_PRODUCT\"}, properties:{}}, {start: {id:\"CLASS_GOV_DEBT\"}, end: {id:\"CLASS_SECURITY\"}, properties:{}}, {start: {id:\"CLASS_EQUITY\"}, end: {id:\"CLASS_SECURITY\"}, properties:{}}, {start: {id:\"CLASS_TOKENIZED_DEBT\"}, end: {id:\"CLASS_TOKEN\"}, properties:{}}, {start: {id:\"CLASS_CRYPTO\"}, end: {id:\"CLASS_TOKEN\"}, properties:{}}] AS row
+MATCH (start:AssetClass{id: row.start.id})
+MATCH (end:AssetClass{id: row.end.id})
+CREATE (start)-[r:IS_A]->(end) SET r += row.properties;
+UNWIND [{start: {id:\"POL_RB_SECURITIES_231Z\"}, end: {id:\"INT_GET_ADVICE\"}, properties:{}}, {start: {id:\"POL_RB_DEPOSIT_COMPARE\"}, end: {id:\"INT_COMPARE\"}, properties:{}}, {start: {id:\"POL_RB_ADVERTISING_PROFIT\"}, end: {id:\"INT_PREDICT_YIELD\"}, properties:{}}] AS row
+MATCH (start:SecurityPolicy{id: row.start.id})
+MATCH (end:UserIntent{id: row.end.id})
+CREATE (start)-[r:RESTRICTS]->(end) SET r += row.properties;
+UNWIND [{start: {id:\"BB_DEPOSIT_STABLE\"}, end: {id:\"CLASS_DEPOSIT\"}, properties:{}}, {start: {id:\"PRIOR_DEPOSIT_PREMIUM\"}, end: {id:\"CLASS_DEPOSIT\"}, properties:{}}, {start: {id:\"MINFIN_VGDO_295\"}, end: {id:\"CLASS_GOV_DEBT\"}, properties:{}}, {start: {id:\"BCSE_PRIOR\"}, end: {id:\"CLASS_EQUITY\"}, properties:{}}, {start: {id:\"BCSE_MAZ\"}, end: {id:\"CLASS_EQUITY\"}, properties:{}}, {start: {id:\"FINSTORE_BELAZ_01\"}, end: {id:\"CLASS_TOKENIZED_DEBT\"}, properties:{}}, {start: {id:\"FINSTORE_MAZ_02\"}, end: {id:\"CLASS_TOKENIZED_DEBT\"}, properties:{}}, {start: {id:\"FINSTORE_EVROTORG\"}, end: {id:\"CLASS_TOKENIZED_DEBT\"}, properties:{}}, {start: {id:\"CRYPTO_BTC\"}, end: {id:\"CLASS_CRYPTO\"}, properties:{}}, {start: {id:\"CRYPTO_USDT\"}, end: {id:\"CLASS_CRYPTO\"}, properties:{}}] AS row
+MATCH (start:Asset{id: row.start.id})
+MATCH (end:AssetClass{id: row.end.id})
+CREATE (start)-[r:IS_A]->(end) SET r += row.properties;
+UNWIND [{start: {id:\"POL_RB_SECURITIES_231Z\"}, end: {id:\"CLASS_SECURITY\"}, properties:{}}, {start: {id:\"POL_RB_SECURITIES_231Z\"}, end: {id:\"CLASS_TOKEN\"}, properties:{}}, {start: {id:\"POL_RB_DEPOSIT_COMPARE\"}, end: {id:\"CLASS_TOKEN\"}, properties:{}}, {start: {id:\"POL_RB_ADVERTISING_PROFIT\"}, end: {id:\"CLASS_SECURITY\"}, properties:{}}, {start: {id:\"POL_RB_ADVERTISING_PROFIT\"}, end: {id:\"CLASS_TOKEN\"}, properties:{}}] AS row
+MATCH (start:SecurityPolicy{id: row.start.id})
+MATCH (end:AssetClass{id: row.end.id})
+CREATE (start)-[r:APPLIES_TO_CLASS]->(end) SET r += row.properties;
+"
