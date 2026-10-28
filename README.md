@@ -363,6 +363,8 @@ NEO4J_BOLT_PORT=7687
 
 ```bash
 docker compose up -d
+docker ps - узнать контейнер id
+docker exec -I <id_контейнера> cypher-shell -u neo4j -p ваш_пароль < init.cypher
 
 ```
 
