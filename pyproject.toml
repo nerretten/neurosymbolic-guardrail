@@ -5,8 +5,19 @@ description = ""
 authors = [
     {name = "nerretten",email = "nerretten@gmail.com"}
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.12, <4.0"
 dependencies = [
+    "neo4j (>=6.4.1,<7.0.0)",
+    "python-dotenv (>=1.2.4,<2.0.0)",
+    "gliner (>=0.2.29,<0.3.0)",
+    "sentence-transformers (>=6.2.0,<7.0.0)",
+    "scikit-learn (>=1.9.1,<2.0.0)",
+    "rapidfuzz (>=3.14.6,<4.0.0)",
+    "nltk (>=3.10.4,<4.0.0)",
+    "fastapi (>=0.162.0,<0.163.0)",
+    "uvicorn (>=0.54.0,<0.55.0)",
+    "sentencepiece (>=0.2.2,<0.3.0)",
+    "protobuf (>=7.36.2,<8.0.0)"
 ]
 
 
