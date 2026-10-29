@@ -29,7 +29,8 @@ build-backend = "poetry.core.masonry.api"
 dev = [
     "ruff (>=0.17.0,<0.18.0)",
     "mypy (>=2.4.0,<3.0.0)",
-    "pre-commit (>=4.6.2,<5.0.0)"
+    "pytest (>=9.2.0,<10.0.0)",
+    "pytest-asyncio (>=1.4.1,<2.0.0)",
 ]
 
 [tool.ruff]
@@ -50,3 +51,6 @@ select = [
 python_version = "3.12"
 strict = true
 ignore_missing_imports = true
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_default_fixture_loop_scope = "session"

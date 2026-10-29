@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guardrail</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --glow-color: rgba(99, 102, 241, 0.12);
+    }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background-color: #060913;
+      color: #f1f5f9;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Точечный паттерн холста и динамическое свечение */
+    .canvas-bg {
+      background-color: #060913;
+      background-image:
+        radial-gradient(circle at 65% 50%, var(--glow-color), transparent 55%),
+        radial-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+      background-size: 100% 100%, 24px 24px;
+      transition: background-image 0.5s ease;
+    }
+
+    /* Анимация потока по активным ребрам графа */
+    @keyframes pulse-flow {
+      from { stroke-dashoffset: 24; }
+      to { stroke-dashoffset: 0; }
+    }
+    .edge-flow {
+      stroke-dasharray: 6 6;
+      animation: pulse-flow 0.75s linear infinite;
+    }
+
+    .node-group {
+      cursor: pointer;
+    }
+    .node-circle {
+      transition: r 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, stroke-width 0.25s ease;
+    }
+    .node-group:hover .node-circle {
+      filter: brightness(1.25) drop-shadow(0 0 12px currentColor);
+    }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+  </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex select-none antialiased">
+
+  <!-- ЛЕВАЯ ПАНЕЛЬ УПРАВЛЕНИЯ (370px) -->
+  <aside class="w-[370px] h-full bg-[#090d1a]/95 border-r border-slate-800/70 flex flex-col shrink-0 z-20 backdrop-blur-xl">
+
+    <!-- МИНИМАЛИСТИЧНЫЙ БРЕНДИНГ -->
+    <div class="h-14 px-5 border-b border-slate-800/60 flex items-center justify-between shrink-0">
+      <div class="flex items-center gap-2.5">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-600 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+        </div>
+        <span class="font-semibold text-sm tracking-tight text-white">Guardrail</span>
+      </div>
+
+      <button onclick="resetCamera()" class="text-[11px] font-medium px-2.5 py-1 rounded-md bg-slate-800/70 hover:bg-slate-800 text-slate-300 border border-slate-700/60 transition flex items-center gap-1.5">
+        <svg class="w-3 h-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+        </svg>
+        Обзор
+      </button>
+    </div>
+
+    <!-- ПОЛЕ ВВОДА И КОМПАКТНЫЕ ТЕГИ -->
+    <div class="p-4 border-b border-slate-800/60 space-y-2.5 shrink-0">
+      <form onsubmit="handleFormSubmit(event)" class="relative">
+        <input
+          id="prompt-input"
+          type="text"
+          value="Какие акции лучше купить?"
+          placeholder="Запрос к ассистенту..."
+          autocomplete="off"
+          class="w-full bg-[#050811] border border-slate-800 focus:border-indigo-500/80 rounded-xl pl-3.5 pr-11 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none transition shadow-inner select-text"
+        />
+        <button
+          type="submit"
+          id="submit-btn"
+          class="absolute right-1.5 top-1.5 bottom-1.5 w-8 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center transition shadow-md shadow-indigo-600/20"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+          </svg>
+        </button>
+      </form>
+
+      <!-- Ультра-короткие теги быстрого переключения -->
+      <div class="flex flex-wrap gap-1">
+        <button onclick="quickRun('Какие акции лучше купить?')" class="text-[11px] px-2 py-0.5 rounded-md bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800/90 transition">Акции</button>
+        <button onclick="quickRun('Может лучше переложить деньги со вклада Приора в токены БелАЗа?')" class="text-[11px] px-2 py-0.5 rounded-md bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800/90 transition">Вклад vs Токен</button>
+        <button onclick="quickRun('Посоветуй, какой вклад открыть в Беларусбанке на год?')" class="text-[11px] px-2 py-0.5 rounded-md bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800/90 transition">Вклад</button>
+        <button onclick="quickRun('Куда сейчас выгоднее всего вложить свободные деньги?')" class="text-[11px] px-2 py-0.5 rounded-md bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800/90 transition">Куда вложить</button>
+        <button onclick="quickRun('Что такое банковский вклад и акции?')" class="text-[11px] px-2 py-0.5 rounded-md bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800/90 transition">Термины</button>
+      </div>
+    </div>
+
+    <!-- БЛОК РЕШЕНИЯ И ЦЕПОЧКИ ФАКТОВ -->
+    <div class="flex-1 overflow-y-auto p-4 space-y-4">
+
+      <!-- КАРТОЧКА ВЕРДИКТА (БЕЗ ЛИШНИХ СЛОВ) -->
+      <div id="verdict-box" class="rounded-xl p-4 border border-slate-800 bg-slate-900/40 transition-all duration-300">
+        <div class="flex items-center justify-between gap-2 mb-2.5">
+          <span id="verdict-pill" class="px-2.5 py-0.5 rounded-md text-[11px] font-mono font-bold tracking-wider uppercase bg-slate-800 text-slate-300">
+            ...
+          </span>
+          <span id="law-pill" class="text-[10px] font-mono text-amber-400/90 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md truncate max-w-[210px] hidden">
+          </span>
+        </div>
+        <p id="verdict-reason" class="text-xs text-slate-300 leading-relaxed select-text"></p>
+      </div>
+
+      <!-- РАСПОЗНАННЫЕ СПАНЫ (СКРЫВАЮТСЯ, ЕСЛИ ПУСТО) -->
+      <div id="spans-row" class="hidden flex items-center gap-1.5 flex-wrap px-0.5">
+        <span class="text-[10px] font-mono uppercase text-slate-500">Токены:</span>
+        <div id="spans-list" class="flex flex-wrap gap-1"></div>
+      </div>
+
+      <!-- МАРШРУТ ВЫВОДА В ГРАФЕ -->
+      <div>
+        <div class="flex items-center justify-between px-0.5 mb-2">
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Путь вывода</span>
+          <span id="steps-badge" class="text-[10px] font-mono text-slate-500"></span>
+        </div>
+        <div id="trace-list" class="space-y-1.5 relative"></div>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- ПРАВАЯ ЧАСТЬ: ИНТЕРАКТИВНЫЙ ГРАФ -->
+  <main id="canvas-wrapper" class="flex-1 h-full relative canvas-bg overflow-hidden">
+
+    <!-- КОМПАКТНАЯ КАРТОЧКА УЗЛА ПРИ КЛИКЕ -->
+    <div id="node-card" class="absolute top-4 right-4 w-64 bg-[#0b1021]/95 border border-slate-700/80 rounded-xl p-3.5 shadow-2xl backdrop-blur-md z-10 hidden">
+      <div class="flex items-center justify-between mb-1.5">
+        <span id="nc-badge" class="text-[9px] font-mono uppercase font-semibold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300"></span>
+        <button onclick="hideNodeCard()" class="text-slate-500 hover:text-slate-200 text-xs">✕</button>
+      </div>
+      <div id="nc-title" class="text-xs font-semibold text-white mb-0.5"></div>
+      <div id="nc-id" class="text-[10px] font-mono text-slate-400 mb-2"></div>
+      <div id="nc-meta" class="space-y-1 border-t border-slate-800/80 pt-2 text-[11px] text-slate-300"></div>
+    </div>
+
+    <!-- ПАРЯЩАЯ ЛЕГЕНДА ВНИЗУ -->
+    <div class="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-[#090d1a]/90 border border-slate-800/80 backdrop-blur-md flex items-center gap-4 text-[11px] text-slate-300 shadow-xl z-10 pointer-events-none">
+      <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full bg-emerald-400"></i>Актив</span>
+      <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full bg-cyan-400"></i>Класс</span>
+      <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full bg-purple-400"></i>Интент</span>
+      <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full bg-amber-400"></i>НПА</span>
+      <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full bg-rose-500"></i>DENY</span>
+      <span class="flex items-center gap-1.5"><i class="w-2 h-2 rounded-full bg-teal-400"></i>ALLOW</span>
+    </div>
+
+    <svg id="graph-svg" class="w-full h-full cursor-grab active:cursor-grabbing"></svg>
+  </main>
+
+  <script>
+    // =====================================================
+    // 1. ОНТОЛОГИЯ И КОЛОНКИ ИЕРАРХИЧЕСКОЙ УКЛАДКИ
+    // =====================================================
+    const NODES = [
+      // Col 0: Активы
+      { id: "BB_DEPOSIT_STABLE", type: "Asset", name: "Вклад Беларусбанк", ticker: "BYN_DEP_BB", col: 0, color: "#34d399" },
+      { id: "PRIOR_DEPOSIT_PREMIUM", type: "Asset", name: "Вклад Приорбанк", ticker: "USD_DEP_PRIOR", col: 0, color: "#34d399" },
+      { id: "MINFIN_VGDO_295", type: "Asset", name: "ВГДО 295 Минфин", ticker: "VGDO295", col: 0, color: "#34d399" },
+      { id: "BCSE_PRIOR", type: "Asset", name: "Акции Приорбанк", ticker: "PRIOR", col: 0, color: "#34d399" },
+      { id: "BCSE_MAZ", type: "Asset", name: "Акции МАЗ", ticker: "MAZ", col: 0, color: "#34d399" },
+      { id: "FINSTORE_BELAZ_01", type: "Asset", name: "Токены БелАЗ", ticker: "BELAZ_USD", col: 0, color: "#34d399" },
+      { id: "FINSTORE_MAZ_02", type: "Asset", name: "Токены МАЗ", ticker: "MAZ_USD", col: 0, color: "#34d399" },
+      { id: "FINSTORE_EVROTORG", type: "Asset", name: "Токены Евроторг", ticker: "EVROTORG_USD", col: 0, color: "#34d399" },
+      { id: "CRYPTO_BTC", type: "Asset", name: "Bitcoin", ticker: "BTC", col: 0, color: "#34d399" },
+      { id: "CRYPTO_USDT", type: "Asset", name: "Tether USD", ticker: "USDT", col: 0, color: "#34d399" },
+
+      // Col 1: Дочерние подклассы
+      { id: "CLASS_GOV_DEBT", type: "AssetClass", name: "Гособлигации", risk: "LOW", col: 1, color: "#22d3ee" },
+      { id: "CLASS_EQUITY", type: "AssetClass", name: "Акции (БВФБ)", risk: "HIGH", col: 1, color: "#22d3ee" },
+      { id: "CLASS_TOKENIZED_DEBT", type: "AssetClass", name: "Токены Finstore", risk: "MEDIUM_HIGH", col: 1, color: "#22d3ee" },
+      { id: "CLASS_CRYPTO", type: "AssetClass", name: "Криптовалюта", risk: "EXTREME", col: 1, color: "#22d3ee" },
+
+      // Col 2: Базовые классы и Интенты
+      { id: "CLASS_DEPOSIT", type: "AssetClass", name: "Банковский вклад", guaranteed: "Да (100%)", law: "Закон № 258-З", col: 2, color: "#22d3ee" },
+      { id: "CLASS_SECURITY", type: "AssetClass", name: "Ценная бумага", guaranteed: "Нет", law: "Закон № 231-З", col: 2, color: "#22d3ee" },
+      { id: "CLASS_TOKEN", type: "AssetClass", name: "Цифровой знак (Токен)", guaranteed: "Нет", law: "Декрет № 8", col: 2, color: "#22d3ee" },
+      { id: "FINANCIAL_PRODUCT", type: "AssetClass", name: "Фин. инструмент", col: 2, color: "#0891b2" },
+
+      { id: "INT_GET_ADVICE", type: "UserIntent", name: "Инвест-совет", col: 2, color: "#c084fc" },
+      { id: "INT_COMPARE", type: "UserIntent", name: "Сравнение", col: 2, color: "#c084fc" },
+      { id: "INT_PREDICT_YIELD", type: "UserIntent", name: "Прогноз дохода", col: 2, color: "#c084fc" },
+      { id: "INT_EDUCATIONAL", type: "UserIntent", name: "Справка / Термины", col: 2, color: "#c084fc" },
+
+      // Col 3: Политики НПА
+      { id: "POL_RB_SECURITIES_231Z", type: "SecurityPolicy", name: "Закон № 231-З (Лицензия)", law: "Закон РБ № 231-З, ст. 11, 14", reason: "Индивидуальное инвестиционное консультирование требует лицензии Минфина РБ.", col: 3, color: "#fbbf24" },
+      { id: "POL_RB_DEPOSIT_COMPARE", type: "SecurityPolicy", name: "Закон № 258-З (Мисселинг)", law: "Закон РБ № 258-З", reason: "Запрещено сопоставлять рисковые токены с банковскими вкладами со 100% госгарантией.", col: 3, color: "#fbbf24" },
+      { id: "POL_RB_ADVERTISING_PROFIT", type: "SecurityPolicy", name: "Закон о рекламе (Доход)", law: "Закон РБ «О рекламе», ст. 13", reason: "Запрещено гарантировать или обещать доходность по инструментам с рыночным риском.", col: 3, color: "#fbbf24" },
+
+      // Col 4: Вердикты
+      { id: "DENY", type: "Verdict", name: "DENY", col: 4, color: "#f43f5e" },
+      { id: "ALLOW", type: "Verdict", name: "ALLOW", col: 4, color: "#2dd4bf" }
+    ];
+
+    const BASE_LINKS = [
+      // Asset -> AssetClass
+      { source: "BB_DEPOSIT_STABLE", target: "CLASS_DEPOSIT", label: "IS_A" },
+      { source: "PRIOR_DEPOSIT_PREMIUM", target: "CLASS_DEPOSIT", label: "IS_A" },
+      { source: "MINFIN_VGDO_295", target: "CLASS_GOV_DEBT", label: "IS_A" },
+      { source: "BCSE_PRIOR", target: "CLASS_EQUITY", label: "IS_A" },
+      { source: "BCSE_MAZ", target: "CLASS_EQUITY", label: "IS_A" },
+      { source: "FINSTORE_BELAZ_01", target: "CLASS_TOKENIZED_DEBT", label: "IS_A" },
+      { source: "FINSTORE_MAZ_02", target: "CLASS_TOKENIZED_DEBT", label: "IS_A" },
+      { source: "FINSTORE_EVROTORG", target: "CLASS_TOKENIZED_DEBT", label: "IS_A" },
+      { source: "CRYPTO_BTC", target: "CLASS_CRYPTO", label: "IS_A" },
+      { source: "CRYPTO_USDT", target: "CLASS_CRYPTO", label: "IS_A" },
+
+      // SubClass -> ParentClass
+      { source: "CLASS_GOV_DEBT", target: "CLASS_SECURITY", label: "IS_A" },
+      { source: "CLASS_EQUITY", target: "CLASS_SECURITY", label: "IS_A" },
+      { source: "CLASS_TOKENIZED_DEBT", target: "CLASS_TOKEN", label: "IS_A" },
+      { source: "CLASS_CRYPTO", target: "CLASS_TOKEN", label: "IS_A" },
+      { source: "CLASS_DEPOSIT", target: "FINANCIAL_PRODUCT", label: "IS_A" },
+      { source: "CLASS_SECURITY", target: "FINANCIAL_PRODUCT", label: "IS_A" },
+      { source: "CLASS_TOKEN", target: "FINANCIAL_PRODUCT", label: "IS_A" },
+
+      // Policy -> Class & Intent
+      { source: "POL_RB_SECURITIES_231Z", target: "CLASS_SECURITY", label: "APPLIES_TO" },
+      { source: "POL_RB_SECURITIES_231Z", target: "CLASS_TOKEN", label: "APPLIES_TO" },
+      { source: "POL_RB_DEPOSIT_COMPARE", target: "CLASS_TOKEN", label: "APPLIES_TO" },
+      { source: "POL_RB_ADVERTISING_PROFIT", target: "CLASS_SECURITY", label: "APPLIES_TO" },
+      { source: "POL_RB_ADVERTISING_PROFIT", target: "CLASS_TOKEN", label: "APPLIES_TO" },
+
+      { source: "POL_RB_SECURITIES_231Z", target: "INT_GET_ADVICE", label: "RESTRICTS" },
+      { source: "POL_RB_DEPOSIT_COMPARE", target: "INT_COMPARE", label: "RESTRICTS" },
+      { source: "POL_RB_ADVERTISING_PROFIT", target: "INT_PREDICT_YIELD", label: "RESTRICTS" },
+
+      // Policy -> Verdict
+      { source: "POL_RB_SECURITIES_231Z", target: "DENY", label: "RESULTS_IN" },
+      { source: "POL_RB_DEPOSIT_COMPARE", target: "DENY", label: "RESULTS_IN" },
+      { source: "POL_RB_ADVERTISING_PROFIT", target: "DENY", label: "RESULTS_IN" },
+
+      // Логические пути к ALLOW для наглядной визуализации разрешения
+      { source: "CLASS_DEPOSIT", target: "ALLOW", label: "PERMITTED", virtual: true },
+      { source: "INT_EDUCATIONAL", target: "ALLOW", label: "PERMITTED", virtual: true }
+    ];
+
+    const NODE_MAP = Object.fromEntries(NODES.map(n => [n.id, n]));
+
+    // Прямой родитель IS_A (без подъема в абстрактный корень FINANCIAL_PRODUCT)
+    const IS_A_PARENT = {
+      BB_DEPOSIT_STABLE: "CLASS_DEPOSIT",
+      PRIOR_DEPOSIT_PREMIUM: "CLASS_DEPOSIT",
+      MINFIN_VGDO_295: "CLASS_GOV_DEBT",
+      BCSE_PRIOR: "CLASS_EQUITY",
+      BCSE_MAZ: "CLASS_EQUITY",
+      FINSTORE_BELAZ_01: "CLASS_TOKENIZED_DEBT",
+      FINSTORE_MAZ_02: "CLASS_TOKENIZED_DEBT",
+      FINSTORE_EVROTORG: "CLASS_TOKENIZED_DEBT",
+      CRYPTO_BTC: "CLASS_CRYPTO",
+      CRYPTO_USDT: "CLASS_CRYPTO",
+      CLASS_GOV_DEBT: "CLASS_SECURITY",
+      CLASS_EQUITY: "CLASS_SECURITY",
+      CLASS_TOKENIZED_DEBT: "CLASS_TOKEN",
+      CLASS_CRYPTO: "CLASS_TOKEN"
+    };
+
+    // =====================================================
+    // 2. ПОСТРОЕНИЕ СЦЕНАРИЯ GRAFD3
+    // =====================================================
+    let svg, g, simulation, linkSel, nodeSel, zoom;
+
+    function initGraph() {
+      const wrap = document.getElementById("canvas-wrapper");
+      const W = wrap.clientWidth;
+      const H = wrap.clientHeight;
+
+      svg = d3.select("#graph-svg").attr("viewBox", [0, 0, W, H]);
+
+      const defs = svg.append("defs");
+      // Стандартная стрелка
+      defs.append("marker")
+        .attr("id", "arrow-muted")
+        .attr("viewBox", "0 -5 10 10")
+        .attr("refX", 22)
+        .attr("refY", 0)
+        .attr("markerWidth", 5)
+        .attr("markerHeight", 5)
+        .attr("orient", "auto")
+        .append("path")
+        .attr("d", "M0,-4L10,0L0,4")
+        .attr("fill", "#334155");
+
+      // Активная яркая стрелка
+      defs.append("marker")
+        .attr("id", "arrow-active")
+        .attr("viewBox", "0 -5 10 10")
+        .attr("refX", 22)
+        .attr("refY", 0)
+        .attr("markerWidth", 6)
+        .attr("markerHeight", 6)
+        .attr("orient", "auto")
+        .append("path")
+        .attr("d", "M0,-4L10,0L0,4")
+        .attr("fill", "#38bdf8");
+
+      g = svg.append("g");
+
+      zoom = d3.zoom()
+        .scaleExtent([0.35, 2.5])
+        .on("zoom", e => g.attr("transform", e.transform));
+
+      svg.call(zoom);
+
+      const colPositions = [0.12, 0.32, 0.54, 0.76, 0.91];
+
+      simulation = d3.forceSimulation(NODES)
+        .force("link", d3.forceLink(BASE_LINKS).id(d => d.id).distance(85).strength(0.35))
+        .force("charge", d3.forceManyBody().strength(-260))
+        .force("x", d3.forceX(d => W * colPositions[d.col]).strength(0.85))
+        .force("y", d3.forceY(H / 2).strength(0.12))
+        .force("collide", d3.forceCollide().radius(36));
+
+      linkSel = g.append("g")
+        .selectAll("line")
+        .data(BASE_LINKS)
+        .enter().append("line")
+        .attr("stroke", "#1e293b")
+        .attr("stroke-width", 1.5)
+        .attr("stroke-dasharray", d => d.virtual ? "3 3" : null)
+        .attr("marker-end", "url(#arrow-muted)");
+
+      nodeSel = g.append("g")
+        .selectAll("g")
+        .data(NODES)
+        .enter().append("g")
+        .attr("class", "node-group")
+        .call(d3.drag()
+          .on("start", (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+          .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; })
+          .on("end", (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }))
+        .on("click", (e, d) => { e.stopPropagation(); showNodeCard(d); focusSingleNode(d); });
+
+      // Внешнее кольцо подсветки
+      nodeSel.append("circle")
+        .attr("class", "node-ring")
+        .attr("r", d => d.type === "Verdict" ? 22 : 16)
+        .attr("fill", "none")
+        .attr("stroke", d => d.color)
+        .attr("stroke-width", 0)
+        .attr("opacity", 0.35);
+
+      // Основной узел
+      nodeSel.append("circle")
+        .attr("class", "node-circle")
+        .attr("r", d => d.type === "Verdict" ? 16 : (d.type === "SecurityPolicy" ? 13 : 10))
+        .attr("fill", d => d.color)
+        .attr("stroke", "#060913")
+        .attr("stroke-width", 2.5);
+
+      // Подпись с темной подложкой для идеальной читаемости
+      const labelGroup = nodeSel.append("g").attr("transform", "translate(0, 21)");
+
+      labelGroup.append("rect")
+        .attr("rx", 4)
+        .attr("ry", 4)
+        .attr("fill", "#090d1acc")
+        .attr("x", d => -(d.name.length * 3.1 + 6))
+        .attr("y", -9)
+        .attr("width", d => d.name.length * 6.2 + 12)
+        .attr("height", 14);
+
+      labelGroup.append("text")
+        .attr("text-anchor", "middle")
+        .attr("fill", "#cbd5e1")
+        .attr("font-size", "10px")
+        .attr("font-weight", "500")
+        .text(d => d.name);
+
+      simulation.on("tick", () => {
+        linkSel
+          .attr("x1", d => d.source.x)
+          .attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x)
+          .attr("y2", d => d.target.y);
+
+        nodeSel.attr("transform", d => `translate(${d.x},${d.y})`);
+      });
+
+      svg.on("click", () => hideNodeCard());
+
+      window.addEventListener("resize", () => {
+        const nw = wrap.clientWidth;
+        const nh = wrap.clientHeight;
+        svg.attr("viewBox", [0, 0, nw, nh]);
+        simulation.force("x", d3.forceX(d => nw * colPositions[d.col]).strength(0.85));
+        simulation.force("y", d3.forceY(nh / 2).strength(0.12));
+        simulation.alpha(0.3).restart();
+      });
+    }
+
+    function resetCamera() {
+      svg.transition().duration(600).call(zoom.transform, d3.zoomIdentity);
+    }
+
+    function focusSingleNode(node) {
+      const wrap = document.getElementById("canvas-wrapper");
+      svg.transition().duration(500).call(
+        zoom.transform,
+        d3.zoomIdentity.translate(wrap.clientWidth / 2, wrap.clientHeight / 2).scale(1.3).translate(-node.x, -node.y)
+      );
+    }
+
+    // =====================================================
+    // 3. РЕКОНСТРУКЦИЯ ПОЛНОГО ПУТИ ФАКТОВ ИЗ ОТВЕТА API
+    // =====================================================
+    function buildFactPath(data) {
+      const activeNodes = new Set();
+      const orderedIds = [];
+      const addNode = id => {
+        if (id && NODE_MAP[id] && !activeNodes.has(id)) {
+          activeNodes.add(id);
+          orderedIds.push(id);
+        }
+      };
+
+      const debug = data.nlp_debug || {};
+      const assets = debug.asset_ids || [];
+      const classes = debug.class_ids || [];
+      const intent = debug.intent_id || (data.trace && data.trace[0]);
+
+      // 1. Добавляем распознанные активы и поднимаемся по IS_A
+      assets.forEach(aId => {
+        addNode(aId);
+        let curr = IS_A_PARENT[aId];
+        while (curr) {
+          addNode(curr);
+          curr = IS_A_PARENT[curr];
+        }
+      });
+
+      // 2. Добавляем распознанные классы и их предков IS_A
+      classes.forEach(cId => {
+        addNode(cId);
+        let curr = IS_A_PARENT[cId];
+        while (curr) {
+          addNode(curr);
+          curr = IS_A_PARENT[curr];
+        }
+      });
+
+      // 3. Добавляем интент
+      if (intent) addNode(intent);
+
+      // 4. Добавляем политику из trace
+      if (data.trace && data.trace.length >= 2) {
+        addNode(data.trace[1]);
+      }
+
+      // 5. Терминальный вердикт
+      addNode(data.verdict);
+
+      return { activeNodes, orderedIds };
+    }
+
+    function applyGraphHighlight(activeNodes, verdict) {
+      const isDeny = verdict === "DENY";
+      const accentColor = isDeny ? "#f43f5e" : "#2dd4bf";
+
+      document.documentElement.style.setProperty(
+        "--glow-color",
+        isDeny ? "rgba(244, 63, 94, 0.14)" : "rgba(45, 212, 191, 0.14)"
+      );
+
+      nodeSel.select(".node-circle")
+        .attr("opacity", d => activeNodes.has(d.id) ? 1 : 0.14)
+        .attr("stroke", d => activeNodes.has(d.id) ? "#ffffff" : "#060913")
+        .attr("stroke-width", d => activeNodes.has(d.id) ? 3 : 2);
+
+      nodeSel.select(".node-ring")
+        .attr("stroke-width", d => activeNodes.has(d.id) ? 6 : 0);
+
+      nodeSel.select("text")
+        .attr("opacity", d => activeNodes.has(d.id) ? 1 : 0.22)
+        .attr("fill", d => activeNodes.has(d.id) ? "#ffffff" : "#94a3b8");
+
+      linkSel
+        .attr("class", d => (activeNodes.has(d.source.id) && activeNodes.has(d.target.id)) ? "edge-flow" : "")
+        .attr("opacity", d => (activeNodes.has(d.source.id) && activeNodes.has(d.target.id)) ? 1 : 0.07)
+        .attr("stroke", d => (activeNodes.has(d.source.id) && activeNodes.has(d.target.id)) ? accentColor : "#1e293b")
+        .attr("stroke-width", d => (activeNodes.has(d.source.id) && activeNodes.has(d.target.id)) ? 2.5 : 1.2)
+        .attr("marker-end", d => (activeNodes.has(d.source.id) && activeNodes.has(d.target.id)) ? "url(#arrow-active)" : "url(#arrow-muted)");
+
+      // Плавное наведение камеры на активное поддерево
+      const matchedCoords = NODES.filter(n => activeNodes.has(n.id) && n.x && n.y);
+      if (matchedCoords.length > 0) {
+        const wrap = document.getElementById("canvas-wrapper");
+        const cx = d3.mean(matchedCoords, d => d.x);
+        const cy = d3.mean(matchedCoords, d => d.y);
+        svg.transition().duration(650).call(
+          zoom.transform,
+          d3.zoomIdentity.translate(wrap.clientWidth / 2, wrap.clientHeight / 2).scale(1.08).translate(-cx, -cy)
+        );
+      }
+    }
+
+    // =====================================================
+    // 4. ОТРИСОВКА ПАНЕЛИ РЕЗУЛЬТАТА
+    // =====================================================
+    const TYPE_LABELS = {
+      Asset: "Актив",
+      AssetClass: "Класс",
+      UserIntent: "Интент",
+      SecurityPolicy: "Правило",
+      Verdict: "Вердикт"
+    };
+
+    function renderUI(data) {
+      const isDeny = data.verdict === "DENY";
+      const box = document.getElementById("verdict-box");
+      const pill = document.getElementById("verdict-pill");
+      const lawPill = document.getElementById("law-pill");
+      const reasonEl = document.getElementById("verdict-reason");
+
+      if (isDeny) {
+        box.className = "rounded-xl p-4 border border-rose-500/35 bg-rose-950/20 transition-all duration-300";
+        pill.className = "px-2.5 py-0.5 rounded-md text-[11px] font-mono font-bold tracking-wider bg-rose-500 text-white shadow-sm shadow-rose-500/30";
+        pill.innerText = "DENY";
+        reasonEl.innerText = data.reason || "Запрос нарушает регуляторные ограничения.";
+      } else {
+        box.className = "rounded-xl p-4 border border-emerald-500/35 bg-emerald-950/20 transition-all duration-300";
+        pill.className = "px-2.5 py-0.5 rounded-md text-[11px] font-mono font-bold tracking-wider bg-emerald-400 text-slate-950 shadow-sm shadow-emerald-400/30";
+        pill.innerText = "ALLOW";
+        reasonEl.innerText = data.reason || "Запрос находится в легальном периметре и передан модели.";
+      }
+
+      if (data.law) {
+        lawPill.innerText = data.law;
+        lawPill.classList.remove("hidden");
+      } else {
+        lawPill.classList.add("hidden");
+      }
+
+      // Спаны GLiNER
+      const spans = (data.nlp_debug && data.nlp_debug.raw_spans) || [];
+      const spansRow = document.getElementById("spans-row");
+      const spansList = document.getElementById("spans-list");
+      spansList.innerHTML = "";
+
+      if (spans.length > 0) {
+        spansRow.classList.remove("hidden");
+        spans.forEach(s => {
+          const tag = document.createElement("span");
+          tag.className = "text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800/90 text-slate-200 border border-slate-700/70";
+          tag.innerText = s;
+          spansList.appendChild(tag);
+        });
+      } else {
+        spansRow.classList.add("hidden");
+      }
+
+      // Построение цепочки фактов
+      const { activeNodes, orderedIds } = buildFactPath(data);
+      document.getElementById("steps-badge").innerText = `${orderedIds.length}`;
+
+      const traceList = document.getElementById("trace-list");
+      traceList.innerHTML = "";
+
+      orderedIds.forEach(id => {
+        const node = NODE_MAP[id];
+        if (!node) return;
+
+        const item = document.createElement("div");
+        item.className = "group flex items-center justify-between p-2 rounded-lg bg-[#050811]/90 hover:bg-slate-900 border border-slate-800/80 hover:border-slate-700 cursor-pointer transition";
+        item.onclick = () => {
+          showNodeCard(node);
+          focusSingleNode(node);
+        };
+
+        item.innerHTML = `
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span class="w-2 h-2 rounded-full shrink-0" style="background:${node.color}"></span>
+            <span class="text-xs font-medium text-slate-200 truncate">${node.name}</span>
+          </div>
+          <span class="text-[10px] font-mono text-slate-500 group-hover:text-slate-400 ml-2 shrink-0">${TYPE_LABELS[node.type] || node.type}</span>
+        `;
+        traceList.appendChild(item);
+      });
+
+      applyGraphHighlight(activeNodes, data.verdict);
+    }
+
+    // =====================================================
+    // 5. КАРТОЧКА СВОЙСТВ УЗЛА
+    // =====================================================
+    function showNodeCard(node) {
+      const card = document.getElementById("node-card");
+      document.getElementById("nc-badge").innerText = TYPE_LABELS[node.type] || node.type;
+      document.getElementById("nc-title").innerText = node.name;
+      document.getElementById("nc-id").innerText = node.id;
+
+      const meta = document.getElementById("nc-meta");
+      meta.innerHTML = "";
+
+      const fields = [
+        ["Тикер", node.ticker],
+        ["Риск", node.risk],
+        ["Госгарантия", node.guaranteed],
+        ["НПА", node.law],
+        ["Описание", node.reason]
+      ];
+
+      fields.forEach(([label, val]) => {
+        if (val) {
+          const div = document.createElement("div");
+          div.innerHTML = `<span class="text-slate-500">${label}:</span> <span class="text-slate-200">${val}</span>`;
+          meta.appendChild(div);
+        }
+      });
+
+      card.classList.remove("hidden");
+    }
+
+    function hideNodeCard() {
+      document.getElementById("node-card").classList.add("hidden");
+    }
+
+    // =====================================================
+    // 6. ЗАПРОС К FASTAPI (/ask) И ФОЛБЭК
+    // =====================================================
+    function quickRun(text) {
+      document.getElementById("prompt-input").value = text;
+      runQuery(text);
+    }
+
+    function handleFormSubmit(e) {
+      e.preventDefault();
+      const text = document.getElementById("prompt-input").value.trim();
+      if (text) runQuery(text);
+    }
+
+    async function runQuery(promptText) {
+      const btn = document.getElementById("submit-btn");
+      btn.classList.add("opacity-50", "pointer-events-none");
+
+      try {
+        const res = await fetch("/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: promptText })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          renderUI(data);
+          btn.classList.remove("opacity-50", "pointer-events-none");
+          return;
+        }
+      } catch (_) {}
+
+      // Локальный фолбэк, если открыто без запущенного сервера
+      renderUI(localFallback(promptText));
+      btn.classList.remove("opacity-50", "pointer-events-none");
+    }
+
+    function localFallback(prompt) {
+      const p = prompt.toLowerCase();
+      if (p.includes("вклад") && (p.includes("токен") || p.includes("белаз"))) {
+        return {
+          verdict: "DENY",
+          law: "Закон РБ № 258-З",
+          reason: "Запрещено сопоставлять рисковые активы и токены с банковскими вкладами со 100% госгарантией.",
+          trace: ["INT_COMPARE", "POL_RB_DEPOSIT_COMPARE", "DENY"],
+          nlp_debug: { intent_id: "INT_COMPARE", asset_ids: ["PRIOR_DEPOSIT_PREMIUM", "FINSTORE_BELAZ_01"], class_ids: [], raw_spans: ["вклада Приора", "токены БелАЗа"] }
+        };
+      }
+      if (p.includes("акци") || p.includes("приор") || p.includes("биткоин")) {
+        return {
+          verdict: "DENY",
+          law: "Закон РБ № 231-З",
+          reason: "Индивидуальное инвестиционное консультирование требует специального разрешения (лицензии) Минфина РБ.",
+          trace: ["INT_GET_ADVICE", "POL_RB_SECURITIES_231Z", "DENY"],
+          nlp_debug: { intent_id: "INT_GET_ADVICE", asset_ids: [], class_ids: ["CLASS_EQUITY"], raw_spans: ["акции"] }
+        };
+      }
+      if (p.includes("вложить") || p.includes("купить")) {
+        return {
+          verdict: "DENY",
+          law: "Закон РБ № 231-З",
+          reason: "Индивидуальное инвестиционное консультирование требует специального разрешения (лицензии) Минфина РБ.",
+          trace: ["INT_GET_ADVICE", "POL_RB_SECURITIES_231Z", "DENY"],
+          nlp_debug: { intent_id: "INT_GET_ADVICE", asset_ids: [], class_ids: [], raw_spans: [] }
+        };
+      }
+      if (p.includes("вклад") && !p.includes("что такое")) {
+        return {
+          verdict: "ALLOW",
+          law: "Закон РБ № 258-З",
+          reason: "Подбор банковского вклада входит в легальный периметр консультирования.",
+          trace: [],
+          nlp_debug: { intent_id: "INT_GET_ADVICE", asset_ids: ["BB_DEPOSIT_STABLE"], class_ids: ["CLASS_DEPOSIT"], raw_spans: ["вклад", "Беларусбанке"] }
+        };
+      }
+      return {
+        verdict: "ALLOW",
+        law: null,
+        reason: "Справочно-образовательный запрос разрешен и передан модели.",
+        trace: [],
+        nlp_debug: { intent_id: "INT_EDUCATIONAL", asset_ids: [], class_ids: [], raw_spans: [] }
+      };
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      initGraph();
+      runQuery("Какие акции лучше купить?");
+    });
+  </script>
+</body>
+</html>
