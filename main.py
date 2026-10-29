@@ -10,6 +10,8 @@ from pydantic import BaseModel
 
 from nlp_engine import NLPEngine
 from rule_engine import RuleEngine
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 
 load_dotenv()
 
@@ -46,7 +48,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Neuro-Symbolic Guardrail API", lifespan=lifespan)
+app.mount("/ui", StaticFiles(directory="ui", html=True), name="ui")
 
+@app.get("/")
+def redirect_to_ui():
+    return RedirectResponse(url="/ui/")
 
 class AskRequest(BaseModel):
     prompt: str
